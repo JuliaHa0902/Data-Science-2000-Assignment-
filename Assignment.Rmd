@@ -1,0 +1,133 @@
+---
+title: "DSCI 2000 - Assignment"
+author: "Dung Ha"
+date: "10/19/2020"
+output: html_document
+---
+
+# Problem 1
+
+Pull out the BLS Release Dates
+
+```{r}
+#install.packages("rvest")
+#install.packages("dplyr")
+library(rvest)
+library(dplyr)
+source("BLS_Release_Dates.R")
+```
+
+Yahoo Finance stock price
+
+```{r}
+#install.packages("quantmod")
+library(quantmod)
+getSymbols("^GSPC", src = "yahoo")
+SP_500 <- Cl(GSPC)
+rm(GSPC)
+SP_500 <- as.data.frame(SP_500)
+SP_500 <- tibble::rownames_to_column(SP_500, var = "Date")
+SP_500$Date <- as.Date(SP_500$Date)
+
+```
+
+Monthly Unemployment Rate
+
+```{r}
+#install.packages("readxl")
+library(readxl)
+uer <- read_xlsx("SeriesReport-20201006201227_5de657.xlsx")
+head(uer)
+```
+
+Tidy the unemployment-rates data frame (uer)
+
+```{r}
+#Delete the row 1 : 10
+uer <- uer[-c(1:10), ]
+
+#Create new data frame
+df <- data.frame(DATE = character(), 
+                 UNEMPLOYMENT_RATE = numeric())
+
+#Tidy data
+for (i in 2:nrow(uer)) {
+  for (j in 2:ncol(uer)) {
+    date <- paste("01", paste(uer[1, j], uer[i, 1]))
+    row <- c(date, uer[i, j])
+    names(row) <- c("DATE", "UNEMPLOYMENT_RATE")
+    df <- rbind (df, row)
+  }
+}
+
+#Convert to Date and Numeric
+df$DATE <- as.Date(df$DATE, format = "%d %b %Y")
+df$UNEMPLOYMENT_RATE <- as.numeric(df$UNEMPLOYMENT_RATE)
+
+#Convert the Date column to Date type
+bls$Date <- as.Date(bls$Date, format = "%A, %B %d, %Y")
+rm(row, uer, date, i, j)
+```
+
+# Problem 2
+
+```{r}
+#Only keep the employment situation row, delete other rows
+bls <- bls[grepl("Employment Situation for", bls$Release),]
+
+#Adjust the date of df forward a month
+#install.packages("lubridate")
+library(lubridate)
+df$DATE <- df$DATE %m+% months(1)
+
+#Extract the month and yeat of df and bls
+df$MONTH <- month(df$DATE)
+df$YEAR <- year(df$DATE)
+bls$MONTH <- month(bls$Date)
+bls$YEAR <- year(bls$Date)
+
+#Match bls and df
+df2 <- merge(x = bls, y = df, by = c("YEAR", "MONTH"))
+
+#Match df2 and SP_500
+df2 <- merge(x = df2, y = SP_500, by = "Date")
+
+#Delete unnecessary columns and variables
+df2 <- df2[,colnames(df2) %in% c("Date", "UNEMPLOYMENT_RATE", "GSPC.Close")]
+rm(bls, df, SP_500)
+```
+
+# Problem 3
+
+Drawing unemployment rate graph
+
+```{r}
+#install.packages("ggplot2")
+library (ggplot2)
+ggplot(df2, aes(x = Date, y = UNEMPLOYMENT_RATE)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Date") +
+  ylab("Unemploymet rate")
+```
+
+Drawing closing stock prices of the S&P 500 on the corresponding dates
+
+```{r}
+ggplot(df2, aes(x = Date, y = GSPC.Close)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Date") +
+  ylab("Closing Stock Price")
+```
+
+
+# Problem 4
+
+The Kendall's t is -0.75 which is close to -1. This means that there is a negative correlation between the unemployment rate and the s&P 500 closing prices on these reporting date.
+
+```{r}
+#Sort df2 by date
+df2 <- df2[order(df2$Date, decreasing = FALSE),]
+t <- cor(df2$UNEMPLOYMENT_RATE, df2$GSPC.Close, method = "kendall", use = "complete.obs")
+```
